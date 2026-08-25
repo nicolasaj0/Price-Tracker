@@ -32,7 +32,13 @@ USER_AGENT = (
 )
 HEADERS = {
     "User-Agent": USER_AGENT,
-    "Accept": "application/json",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Origin": "https://www.nintendo.com",
+    "Referer": "https://www.nintendo.com/",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "cross-site",
 }
 
 _global_client: Optional[httpx.AsyncClient] = None
@@ -177,6 +183,40 @@ def _extract_clean_image_url(hit: Dict[str, Any], default: str = DEFAULT_ESHOP_B
             return f"https://assets.nintendo.com/image/upload/c_fill,w_1200/{pid}"
 
     return default
+
+
+def _parse_algolia_price_details(eshop_det: Optional[Dict[str, Any]], country_code: str = "BR") -> Optional[Dict[str, Any]]:
+    """Extrai informações de preço de forma instantânea e confiável a partir do eshopDetails do Algolia."""
+    if not eshop_det or not isinstance(eshop_det, dict):
+        return None
+    reg_p = eshop_det.get("regularPrice")
+    disc_p = eshop_det.get("discountPrice")
+    curr = eshop_det.get("currency") or ("BRL" if country_code.upper() == "BR" else "USD")
+
+    if reg_p is not None:
+        init_val = float(reg_p)
+        if disc_p is not None:
+            current_val = float(disc_p)
+            disc_perc = round(((init_val - current_val) / init_val) * 100) if init_val > 0 else 0
+            on_sale = True
+        else:
+            current_val = init_val
+            disc_perc = 0
+            on_sale = False
+
+        return {
+            "sales_status": "onsale" if eshop_det.get("isPurchasable", True) else "unreleased",
+            "country": country_code.upper(),
+            "currency": curr,
+            "current_price": current_val,
+            "initial_price": init_val,
+            "discount_percent": disc_perc,
+            "current_formatted": format_currency_global(current_val, curr, country_code),
+            "initial_formatted": format_currency_global(init_val, curr, country_code),
+            "on_sale": on_sale,
+            "discount_end": eshop_det.get("discountPriceEnd"),
+        }
+    return None
 
 
 async def _fetch_with_retry(
@@ -351,26 +391,11 @@ async def _search_algolia_americas(
                     else f"https://www.nintendo.com/store/products/{nsuid}/"
                 )
 
-                eshop_det = hit.get("eshopDetails") or {}
-                reg_p = eshop_det.get("regularPrice")
-                disc_p = eshop_det.get("discountPrice")
-                curr = eshop_det.get("currency") or ("BRL" if cc == "BR" else "USD")
-
-                if reg_p is not None and cc == "BR":
-                    if disc_p is not None:
-                        current_val = float(disc_p)
-                        init_val = float(reg_p)
-                        disc_perc = round(((init_val - current_val) / init_val) * 100) if init_val > 0 else 0
-                        price_str = format_currency_global(current_val, curr, cc)
-                    else:
-                        current_val = float(reg_p)
-                        init_val = current_val
-                        disc_perc = 0
-                        price_str = format_currency_global(current_val, curr, cc)
-                else:
+                price_info = _parse_algolia_price_details(hit.get("eshopDetails"), country_code=cc)
+                if not price_info:
                     price_info = await get_eshop_price_by_nsuid(nsuid, country_code=cc, client=cli)
-                    price_str = price_info["current_formatted"] if price_info else "Preço sob consulta"
-                    disc_perc = price_info["discount_percent"] if price_info else 0
+                price_str = price_info["current_formatted"] if price_info else "Preço sob consulta"
+                disc_perc = price_info["discount_percent"] if price_info else 0
 
                 results.append(
                     {
@@ -528,6 +553,7 @@ async def get_eshop_game_details(
     publishers = "Nintendo"
     developers = "Nintendo"
 
+    price_info = None
     try:
         cli = client or await get_http_client()
         body = {
@@ -550,10 +576,13 @@ async def get_eshop_game_details(
                 developers = sanitize_text(hit.get("softwareDeveloper", "")) or developers
                 if hit.get("url"):
                     store_url = f"https://www.nintendo.com{hit['url']}"
+                price_info = _parse_algolia_price_details(hit.get("eshopDetails"), country_code=cc)
     except Exception:
         pass
 
-    price_info = await get_eshop_price_by_nsuid(nsuid, country_code=cc, client=client)
+    if not price_info:
+        price_info = await get_eshop_price_by_nsuid(nsuid, country_code=cc, client=client)
+
     if not price_info:
         return None
 
