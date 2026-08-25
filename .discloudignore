@@ -8,6 +8,7 @@ scratch/
 __pycache__/
 *.pyc
 .venv/
+discloud/
 data/*.db
 data/*.db-wal
 data/*.db-shm

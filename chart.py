@@ -86,8 +86,8 @@ def gerar_grafico_historico(
             from datetime import timedelta
             dates = [dates[0] + timedelta(minutes=i * 10) for i in range(len(dates))]
 
-        # Configurações visuais com o tema escuro oficial do Discord
-        fig, ax = plt.subplots(figsize=(7.5, 3.6), dpi=120)
+        # Configurações visuais ultra-otimizadas para baixo consumo de RAM (< 2 MB)
+        fig, ax = plt.subplots(figsize=(5.6, 2.6), dpi=80)
         fig.patch.set_facecolor("#2B2D31")  # Fundo externo Discord
         ax.set_facecolor("#1E1F22")        # Fundo do gráfico
 
@@ -97,12 +97,12 @@ def gerar_grafico_historico(
             dates,
             prices,
             color=line_color,
-            linewidth=2.4,
+            linewidth=2.0,
             marker="o",
-            markersize=5,
+            markersize=4.5,
             markerfacecolor="#FFFFFF",
             markeredgecolor=line_color,
-            markeredgewidth=1.5,
+            markeredgewidth=1.2,
             label="Preço Registrado",
             zorder=3,
         )
@@ -119,10 +119,10 @@ def gerar_grafico_historico(
             min_date,
             min_price,
             marker="o",
-            markersize=8,
+            markersize=7,
             markerfacecolor="#57F287",  # Discord Green
             markeredgecolor="#1E1F22",
-            markeredgewidth=2.0,
+            markeredgewidth=1.5,
             zorder=4,
         )
 
@@ -130,31 +130,31 @@ def gerar_grafico_historico(
         ax.annotate(
             f"Menor: {min_price_label}",
             xy=(min_date, min_price),
-            xytext=(0, 14),
+            xytext=(0, 12),
             textcoords="offset points",
             ha="center",
             va="bottom",
-            fontsize=9.5,
+            fontsize=8.5,
             fontweight="bold",
             color="#57F287",
             bbox=dict(
-                boxstyle="round,pad=0.35",
+                boxstyle="round,pad=0.3",
                 fc="#2B2D31",
                 ec="#57F287",
-                lw=1.2,
+                lw=1.0,
                 alpha=0.95,
             ),
             zorder=5,
         )
 
         # Título com bandeira/país
-        title_display = titulo if len(titulo) <= 35 else titulo[:32] + "..."
+        title_display = titulo if len(titulo) <= 32 else titulo[:29] + "..."
         ax.set_title(
-            f"Histórico de Preços ({country_code.upper()}): {title_display}",
+            f"Histórico ({country_code.upper()}): {title_display}",
             color="#F2F3F5",
-            fontsize=11.5,
+            fontsize=10.0,
             fontweight="bold",
-            pad=14,
+            pad=10,
         )
 
         # Formatação do Eixo X (Datas no padrão DD/MM)
@@ -173,10 +173,10 @@ def gerar_grafico_historico(
 
         for spine in ax.spines.values():
             spine.set_color("#3F4147")
-            spine.set_linewidth(1.0)
+            spine.set_linewidth(0.8)
 
-        ax.tick_params(colors="#949BA4", labelsize=8.5)
-        ax.grid(True, linestyle="--", alpha=0.35, color="#4E5058", zorder=1)
+        ax.tick_params(colors="#949BA4", labelsize=8.0)
+        ax.grid(True, linestyle="--", alpha=0.3, color="#4E5058", zorder=1)
 
         plt.tight_layout()
 
@@ -185,7 +185,7 @@ def gerar_grafico_historico(
             format="png",
             facecolor=fig.get_facecolor(),
             edgecolor="none",
-            dpi=120,
+            dpi=80,
         )
         buffer.seek(0)
         return buffer
@@ -197,5 +197,7 @@ def gerar_grafico_historico(
     finally:
         if fig is not None:
             plt.close(fig)
+        plt.close("all")
         del fig, ax
+        gc.collect()
         gc.collect()
