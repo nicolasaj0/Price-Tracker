@@ -1159,12 +1159,14 @@ async def cmd_gratis(interaction: discord.Interaction):
             worth = item.get("worth", "N/A")
             end_date = item.get("end_date", "Por tempo limitado")
             url = item.get("url", "https://store.steampowered.com/")
-            instructions = item.get("instructions", "Resgate na Steam")
+            clean_inst = instructions.replace("\n", " ").strip()
+            if len(clean_inst) > 130:
+                clean_inst = clean_inst[:127] + "..."
 
             field_val = (
-                f"💰 **Valor Original:** `{worth}` $\\rightarrow$ **GRÁTIS!**\n"
+                f"💰 **Valor Original:** `{worth}` ➔ **GRÁTIS!**\n"
                 f"⏳ **Expira em:** {end_date}\n"
-                f"📝 {instructions}"
+                f"📝 {clean_inst}"
             )
             embed.add_field(name=f"🎮 {idx}. {title}", value=field_val, inline=False)
 
