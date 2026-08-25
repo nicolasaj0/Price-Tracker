@@ -1,0 +1,13 @@
+.git/
+.agents/
+workspace/
+tests/
+scratch/
+*.db-wal
+*.db-shm
+__pycache__/
+*.pyc
+.venv/
+data/*.db
+data/*.db-wal
+data/*.db-shm
