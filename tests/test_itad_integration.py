@@ -114,22 +114,21 @@ async def run_itad_tests():
 
         # Embed com dados do ITAD
         embed_itad = bot.build_info_embed(test_game, color=bot.DISCORD_BLURPLE, itad_data=fake_itad_data)
-        field_itad = next((f for f in embed_itad.fields if f.name == "📉 Menor Histórico Real"), None)
-        assert field_itad is not None, "Campo '📉 Menor Histórico Real' não encontrado no Embed"
-        assert "ITAD" in field_itad.value
+        field_itad = next((f for f in embed_itad.fields if f.name == "📉 Menor Histórico"), None)
+        assert field_itad is not None, "Campo '📉 Menor Histórico' não encontrado no Embed"
         assert "R$ 6,59" in field_itad.value
         assert "(-80%)" in field_itad.value
         assert "22/12/2021" in field_itad.value
 
         # Embed sem dados do ITAD (Fallback local)
-        embed_local = bot.build_info_embed(test_game, color=bot.DISCORD_BLURPLE, lowest_historical=12.50)
-        field_local = next((f for f in embed_local.fields if f.name == "🏆 Menor Registrado"), None)
-        assert field_local is not None, "Campo '🏆 Menor Registrado' não encontrado no Embed"
-        assert "Banco Local" in field_local.value
+        embed_local = bot.build_info_embed(test_game, color=bot.DISCORD_BLURPLE, lowest_historical=12.50, lowest_historical_date="15/06/2023")
+        field_local = next((f for f in embed_local.fields if f.name == "📉 Menor Histórico"), None)
+        assert field_local is not None, "Campo '📉 Menor Histórico' não encontrado no Embed"
         assert "R$ 12,50" in field_local.value
+        assert "15/06/2023" in field_local.value
 
-        print("  ✓ Embed com ITAD formatado com sucesso: 'R$ 6,59 (-80%) em 22/12/2021 (Fonte: ITAD)'.")
-        print("  ✓ Embed com Fallback local formatado com sucesso: 'R$ 12,50 (Banco Local)'.")
+        print("  ✓ Embed com ITAD formatado com sucesso: 'R$ 6,59 (-80%) em 22/12/2021'.")
+        print("  ✓ Embed com Fallback local formatado com sucesso: 'R$ 12,50 em 15/06/2023'.")
 
     finally:
         if os.path.exists(temp_db):

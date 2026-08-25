@@ -269,16 +269,16 @@ def build_info_embed(
         date_str = f" em {itad_data.get('recorded_date')}" if itad_data.get("recorded_date") else ""
         cut_str = f" `(-{cut}%)`" if cut > 0 else ""
         embed.add_field(
-            name="📉 Menor Histórico Real",
-            value=f"**{formatted_low}**{cut_str}{date_str}\nFonte: ITAD",
+            name="📉 Menor Histórico",
+            value=f"**{formatted_low}**{cut_str}{date_str}",
             inline=True,
         )
     elif lowest_historical and lowest_historical > 0:
         formatted_low = steam.format_currency_global(lowest_historical, currency=currency, country_code=country_code)
         date_str = f" em {lowest_historical_date}" if lowest_historical_date else ""
         embed.add_field(
-            name="🏆 Menor Registrado",
-            value=f"**{formatted_low}**{date_str}\nBanco Local",
+            name="📉 Menor Histórico",
+            value=f"**{formatted_low}**{date_str}",
             inline=True,
         )
 
