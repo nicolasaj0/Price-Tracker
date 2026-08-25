@@ -413,8 +413,6 @@ async def _search_algolia_americas(
                 )
 
                 price_info = _parse_algolia_price_details(hit.get("eshopDetails"), country_code=cc)
-                if not price_info:
-                    price_info = await get_eshop_price_by_nsuid(nsuid, country_code=cc, client=cli)
                 price_str = price_info["current_formatted"] if price_info else "Preço sob consulta"
                 disc_perc = price_info["discount_percent"] if price_info else 0
 
