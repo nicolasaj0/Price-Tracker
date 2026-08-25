@@ -14,7 +14,6 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 import bot
-import chart
 import db
 import eshop
 import steam
@@ -117,30 +116,24 @@ async def run_multiregion_tests():
         print(f"  ✓ eShop US: Hollow Knight -> {eshop_us['current_formatted']} ({eshop_us['currency']})")
 
         # ----------------------------------------------------------------------
-        # 4. Teste de Gráficos com Símbolo de Moeda Dinâmico
+        # 4. Teste de Formatação Monetária Multi-Moeda
         # ----------------------------------------------------------------------
-        print("\n[4/4] 📈 Testando Renderização Gráfica em Moedas Internacionais...")
-        buf_us = await asyncio.to_thread(
-            chart.gerar_grafico_historico,
-            "Portal 2",
-            history_us,
-            currency="USD",
-            country_code="US",
-        )
-        assert buf_us is not None
-        assert len(buf_us.getvalue()) > 0
-        print(f"  ✓ Gráfico em USD gerado com sucesso ({len(buf_us.getvalue()) / 1024:.2f} KB).")
+        print("\n[4/4] 💱 Testando Formatação Monetária Multi-Moeda...")
+        fmt_us = steam.format_currency_global(9.99, "USD", "US")
+        assert "$" in fmt_us
+        print(f"  ✓ Formatação em USD validada: {fmt_us}")
 
-        buf_br = await asyncio.to_thread(
-            chart.gerar_grafico_historico,
-            "Portal 2",
-            history_br,
-            currency="BRL",
-            country_code="BR",
-        )
-        assert buf_br is not None
-        assert len(buf_br.getvalue()) > 0
-        print(f"  ✓ Gráfico em BRL gerado com sucesso ({len(buf_br.getvalue()) / 1024:.2f} KB).")
+        fmt_br = steam.format_currency_global(32.99, "BRL", "BR")
+        assert "R$" in fmt_br
+        print(f"  ✓ Formatação em BRL validada: {fmt_br}")
+
+        fmt_pt = steam.format_currency_global(9.75, "EUR", "PT")
+        assert "€" in fmt_pt
+        print(f"  ✓ Formatação em EUR validada: {fmt_pt}")
+
+        fmt_jp = steam.format_currency_global(1200.0, "JPY", "JP")
+        assert "¥" in fmt_jp
+        print(f"  ✓ Formatação em JPY validada: {fmt_jp}")
 
     finally:
         if os.path.exists(temp_db):

@@ -22,7 +22,6 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 import bot
-import chart
 import db
 import eshop
 import giveaways
@@ -167,13 +166,13 @@ async def run_v1_1_tests():
             print(f"     • {g['title']} | Valor: {g['worth']} | Expira: {g['end_date']}")
 
         # ----------------------------------------------------------------------
-        # 7. Verificação dos 10 Slash Commands na CommandTree
+        # 7. Verificação dos 9 Slash Commands na CommandTree
         # ----------------------------------------------------------------------
         print("\n[7/7] 🌲 Verificando Comandos Slash na CommandTree...")
         cmds = {cmd.name for cmd in bot.bot.tree.get_commands()}
-        expected_cmds = {"steam", "eshop", "historico", "monitorar", "listar", "remover", "comparar", "status", "gratis", "canal_gratis"}
+        expected_cmds = {"steam", "eshop", "monitorar", "listar", "remover", "comparar", "status", "gratis", "canal_gratis"}
         assert expected_cmds.issubset(cmds), f"Comandos ausentes: {expected_cmds - cmds}"
-        print(f"  ✓ Todos os 10 Slash Commands registrados com sucesso: {sorted(list(cmds))}")
+        print(f"  ✓ Todos os 9 Slash Commands registrados com sucesso: {sorted(list(cmds))}")
 
     finally:
         if os.path.exists(temp_db):

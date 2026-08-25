@@ -21,7 +21,6 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 import httpx
 
-from chart import gerar_grafico_historico
 import db
 import eshop
 import giveaways
@@ -288,62 +287,7 @@ def build_info_embed(
     return embed
 
 
-def build_chart_embed(
-    data: Dict[str, Any],
-    color: int,
-    lowest_historical: Optional[float] = None,
-    itad_data: Optional[Dict[str, Any]] = None,
-    history_count: int = 0,
-) -> discord.Embed:
-    """Gera o Card 2 contendo análise de menor histórico, variação e imagem do gráfico anexado."""
-    country_code = data.get("country_code", "BR").upper()
-    currency = data.get("currency", "BRL")
-    flag = COUNTRY_FLAGS.get(country_code, "🌐")
 
-    embed = discord.Embed(
-        title=f"📊 Histórico & Tendência de Preço ({flag} {country_code})",
-        color=color,
-    )
-
-    current_p = data.get("current_price", 0.0)
-    initial_p = data.get("initial_price", current_p)
-
-    if itad_data and itad_data.get("amount") is not None:
-        min_p_display = steam.format_currency_global(
-            float(itad_data["amount"]), currency=itad_data.get("currency", currency), country_code=country_code
-        )
-        min_field_name = "📉 Menor Real (ITAD)"
-    elif lowest_historical:
-        min_p_display = steam.format_currency_global(lowest_historical, currency=currency, country_code=country_code)
-        min_field_name = "🏆 Menor Histórico"
-    else:
-        min_p_display = data.get("current_formatted", "N/A")
-        min_field_name = "🏆 Menor Histórico"
-
-    if initial_p > 0 and current_p < initial_p:
-        var_pct = round(((initial_p - current_p) / initial_p) * 100)
-        var_display = f"-{var_pct}%"
-    else:
-        var_display = "0%"
-
-    embed.add_field(
-        name=min_field_name,
-        value=f"**{min_p_display}**",
-        inline=True,
-    )
-    embed.add_field(
-        name="📉 Desconto Atual",
-        value=f"**{var_display}**",
-        inline=True,
-    )
-    embed.add_field(
-        name="📈 Coletas Registradas",
-        value=f"`{history_count}` registros",
-        inline=True,
-    )
-
-    embed.set_image(url="attachment://price_chart.png")
-    return embed
 
 
 # ==============================================================================
@@ -637,9 +581,8 @@ async def send_game_response(
     interaction: discord.Interaction,
     details: Dict[str, Any],
     title_prefix: str = "",
-    force_chart: bool = False,
 ) -> None:
-    """Monta a resposta com Multi-Embed Stack (Card 1 + Card 2 com Gráfico) ou Fallback."""
+    """Monta a resposta com Embed rico e banner anexado diretamente (ultra-rápido, zero impacto de RAM)."""
     platform = details.get("platform", "steam")
     game_id = str(details.get("game_id", ""))
     current_p = details.get("current_price", 0.0)
@@ -649,7 +592,6 @@ async def send_game_response(
     if current_p > 0:
         await db.record_price_history(game_id, platform, current_p, currency=currency, country_code=country_code, db_path=db.DB_PATH)
 
-    history = await db.get_price_history(game_id, platform, country_code=country_code, db_path=db.DB_PATH)
     lowest_rec = await db.get_lowest_historical_price(platform, game_id, country_code=country_code, db_path=db.DB_PATH)
 
     # Consulta Menor Preço Histórico Real no IsThereAnyDeal se for Steam
@@ -698,54 +640,6 @@ async def send_game_response(
                 card_info.set_image(url="attachment://banner.jpg")
         except Exception as exc:
             logger.warning("Falha ao anexar banner localmente, usando URL remota: %s", exc)
-
-    # Envio de gráfico se houver histórico (ou síntese via ITAD no comando /historico)
-    plot_history = list(history) if history else []
-    if force_chart and len(plot_history) < 2 and (itad_data or details.get("initial_price")):
-        init_p = details.get("initial_price", current_p)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        synth = []
-        if itad_data and itad_data.get("amount") is not None:
-            itad_p = float(itad_data["amount"])
-            rec_date = itad_data.get("recorded_at") or itad_data.get("recorded_date") or "2023-01-01T00:00:00"
-            if "T" not in str(rec_date):
-                try:
-                    parts = str(rec_date).split("/")
-                    if len(parts) == 3:
-                        rec_date = f"{parts[2]}-{parts[1]}-{parts[0]}T00:00:00"
-                except Exception:
-                    rec_date = "2023-01-01T00:00:00"
-            synth.append(("2022-01-01T00:00:00", init_p if init_p > 0 else itad_p * 1.5))
-            synth.append((str(rec_date), itad_p))
-            synth.append((now_iso, current_p))
-        elif init_p > 0 and current_p > 0:
-            synth.append(("2023-01-01T00:00:00", init_p))
-            synth.append((now_iso, current_p))
-
-        if len(synth) >= 2:
-            synth.sort(key=lambda x: str(x[0]))
-            plot_history = synth
-
-    should_plot = (len(plot_history) >= 2) if force_chart else (len(history) >= 2)
-    if should_plot and perms["attach_files"]:
-        try:
-            chart_buffer = await asyncio.to_thread(
-                gerar_grafico_historico, details["title"], plot_history, currency=currency, country_code=country_code
-            )
-
-            if chart_buffer is not None:
-                files_to_send.append(discord.File(fp=chart_buffer, filename="price_chart.png"))
-                card_chart = build_chart_embed(
-                    details, color=color, lowest_historical=lowest_rec, itad_data=itad_data, history_count=max(len(history), len(plot_history))
-                )
-                await interaction.followup.send(
-                    embeds=[card_info, card_chart],
-                    files=files_to_send,
-                    view=view,
-                )
-                return
-        except Exception as chart_err:
-            logger.error("Erro ao gerar gráfico de histórico: %s", chart_err)
 
     try:
         if files_to_send:
@@ -950,66 +844,7 @@ async def comparar_autocomplete(interaction: discord.Interaction, current: str) 
         return []
 
 
-@bot.tree.command(name="historico", description="Exibe a análise detalhada e o gráfico de tendência de preço por região.")
-@app_commands.describe(
-    plataforma="Plataforma do jogo (Steam ou eShop)",
-    jogo="Nome ou identificador do jogo",
-    regiao="País/Região do histórico (Padrão: Brasil)",
-)
-@app_commands.choices(regiao=REGIAO_CHOICES)
-async def cmd_historico(
-    interaction: discord.Interaction,
-    plataforma: Literal["Steam", "eShop"],
-    jogo: str,
-    regiao: Optional[app_commands.Choice[str]] = None,
-):
-    await interaction.response.defer()
-    plat_key = plataforma.lower()
-    cc = regiao.value if regiao else "BR"
-    logger.info("/historico [%s] '%s' (Região: %s) por %s", plat_key, jogo, cc, interaction.user)
 
-    try:
-        details = None
-        if plat_key == "steam":
-            if jogo.strip().isdigit():
-                details = await steam.get_steam_game_details(jogo.strip(), country_code=cc)
-            else:
-                results = await steam.search_steam_games(jogo, limit=1, country_code=cc)
-                if results:
-                    details = await steam.get_steam_game_details(results[0]["id"], country_code=cc)
-        else:
-            if jogo.strip().isdigit() and len(jogo.strip()) >= 10:
-                details = await eshop.get_eshop_game_details(jogo.strip(), country_code=cc)
-            else:
-                results = await eshop.search_eshop_games(jogo, limit=1, country_code=cc)
-                if results:
-                    details = await eshop.get_eshop_game_details(results[0]["id"], country_code=cc, title_fallback=results[0]["name"])
-
-        if not details:
-            await interaction.followup.send(f"❌ Jogo **{clean_str(jogo, 100)}** não encontrado na {plataforma} ({cc}).", ephemeral=True)
-            return
-
-        await send_game_response(interaction, details, title_prefix="📊 ", force_chart=True)
-
-    except Exception as exc:
-        logger.error("Erro no comando /historico: %s", exc, exc_info=True)
-        await interaction.followup.send("⚠️ Erro ao consultar histórico.", ephemeral=True)
-
-
-@cmd_historico.autocomplete("jogo")
-async def historico_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-    if len(current.strip()) < 2:
-        return []
-    plat = str(interaction.namespace.plataforma or "Steam").lower()
-    regiao_val = interaction.namespace.regiao or "BR"
-    try:
-        if plat == "steam":
-            items = await steam.autocomplete_steam_games(current, country_code=regiao_val)
-        else:
-            items = await eshop.autocomplete_eshop_games(current, country_code=regiao_val)
-        return [app_commands.Choice(name=name, value=val) for name, val in items[:25]]
-    except Exception:
-        return []
 
 
 @bot.tree.command(name="monitorar", description="Cadastra um alerta de preço no SQLite com opção de notificação em DM.")
@@ -1436,24 +1271,6 @@ async def price_checker_worker():
                                 channel = await bot.fetch_channel(channel_id)
 
                             if channel and hasattr(channel, "send"):
-                                history = await db.get_price_history(game_id, platform, country_code=country_code, db_path=db.DB_PATH)
-                                if history and len(history) >= 2:
-                                    chart_buffer = await asyncio.to_thread(
-                                        gerar_grafico_historico, details["title"], history, currency=currency, country_code=country_code
-                                    )
-                                    if chart_buffer is not None:
-                                        file = discord.File(fp=chart_buffer, filename="price_chart.png")
-                                        card_chart = build_chart_embed(
-                                            details, color=color, lowest_historical=lowest_rec, history_count=len(history)
-                                        )
-                                        await channel.send(
-                                            content=f"🔔 <@{user_id}> Notificação de Preço!",
-                                            embeds=[card_info, card_chart],
-                                            file=file,
-                                            view=view,
-                                        )
-                                        continue
-
                                 await channel.send(
                                     content=f"🔔 <@{user_id}> Notificação de Preço!",
                                     embed=card_info,

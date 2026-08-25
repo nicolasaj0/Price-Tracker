@@ -23,7 +23,6 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 import bot
-import chart
 import db
 import eshop
 import steam
@@ -113,16 +112,12 @@ async def run_full_system_test():
         assert len(history_single) == 1, "Histórico unitário inconsistente"
 
         # Tenta gerar gráfico: deve retornar None e permitir Card 1 único
-        chart_result = await asyncio.to_thread(
-            chart.gerar_grafico_historico, game_single_data["title"], history_single
-        )
-        assert chart_result is None, "Gráfico não deveria ser gerado com apenas 1 registro"
-        print(f"  ✓ Fallback validado: histórico unitário não gera gráfico desnecessário.")
+        print(f"  ✓ Histórico unitário registrado e recuperado com sucesso.")
 
         # ----------------------------------------------------------------------
-        # 4. Teste de Renderização Não-Bloqueante de Gráficos e RAM (< 120 MB)
+        # 4. Teste de Controle Estrito de Memória RAM (< 50 MB)
         # ----------------------------------------------------------------------
-        print("\n[4/5] 📈 Testando Renderização Não-Bloqueante & Consumo de Memória...")
+        print("\n[4/5] ⚡ Testando Eficiência & Controle Estrito de Memória RAM...")
         tracemalloc.start()
         gc.collect()
 
@@ -149,20 +144,12 @@ async def run_full_system_test():
         history_multi = await db.get_price_history("620", "steam", db_path=temp_db)
         assert len(history_multi) >= 6, "Histórico multiponto incompleto"
 
-        # Geração do gráfico offloading em thread pool
-        chart_buffer = await asyncio.to_thread(
-            chart.gerar_grafico_historico, "Portal 2", history_multi
-        )
-        assert chart_buffer is not None, "Falha na geração do gráfico multi-embed"
-        assert chart_buffer.getvalue().startswith(b"\x89PNG"), "Buffer gerado não é um PNG válido"
-
         _, peak_mem = tracemalloc.get_traced_memory()
         tracemalloc.stop()
 
         peak_mb = peak_mem / (1024 * 1024)
-        print(f"  ✓ Gráfico PNG renderizado com sucesso ({len(chart_buffer.getvalue()) / 1024:.2f} KB).")
-        print(f"  ✓ Pico de memória durante execução: {peak_mb:.2f} MB (dentro dos limites).")
-        assert peak_mb < 120.0, f"Uso de memória ({peak_mb:.2f} MB) excedeu o teto estrito de 120 MB"
+        print(f"  ✓ Pico de memória durante execução do banco: {peak_mb:.2f} MB (arquitetura ultra-leve).")
+        assert peak_mb < 50.0, f"Uso de memória ({peak_mb:.2f} MB) excedeu o teto estrito de 50 MB"
 
         # ----------------------------------------------------------------------
         # 5. Teste de Auto-Purge de Canais Inacessíveis
