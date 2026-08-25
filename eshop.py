@@ -224,6 +224,19 @@ def _parse_algolia_price_details(eshop_det: Optional[Dict[str, Any]], country_co
             "on_sale": on_sale,
             "discount_end": eshop_det.get("discountPriceEnd"),
         }
+    elif eshop_det.get("isPurchasable") is False or reg_p is None:
+        return {
+            "sales_status": "not_purchasable",
+            "country": country_code.upper(),
+            "currency": curr,
+            "current_price": 0.0,
+            "initial_price": 0.0,
+            "discount_percent": 0,
+            "current_formatted": "Indisponível / Bônus",
+            "initial_formatted": "Indisponível",
+            "on_sale": False,
+            "discount_end": None,
+        }
     return None
 
 

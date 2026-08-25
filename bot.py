@@ -6,6 +6,7 @@ Multi-Embed Stack, gráficos dinâmicos, auto-restore no boot, alertas em DM, /c
 import asyncio
 from datetime import datetime, timezone
 import html
+import io
 import logging
 import math
 import os
@@ -685,6 +686,18 @@ async def send_game_response(
         details, color=color, lowest_historical=lowest_rec, itad_data=itad_data, title_prefix=title_prefix
     )
 
+    files_to_send = []
+    banner_url = details.get("header_image")
+    if banner_url and str(banner_url).startswith("http") and perms.get("attach_files", True):
+        try:
+            cli = await get_http_client()
+            resp_banner = await cli.get(banner_url, timeout=3.5)
+            if resp_banner.status_code == 200 and len(resp_banner.content) > 500:
+                files_to_send.append(discord.File(fp=io.BytesIO(resp_banner.content), filename="banner.jpg"))
+                card_info.set_image(url="attachment://banner.jpg")
+        except Exception as exc:
+            logger.warning("Falha ao anexar banner localmente, usando URL remota: %s", exc)
+
     # Envio de gráfico se houver histórico e permissão de Attach Files
     if history and len(history) >= 2 and perms["attach_files"]:
         chart_buffer = await asyncio.to_thread(
@@ -692,18 +705,21 @@ async def send_game_response(
         )
 
         if chart_buffer is not None:
-            file = discord.File(fp=chart_buffer, filename="price_chart.png")
+            files_to_send.append(discord.File(fp=chart_buffer, filename="price_chart.png"))
             card_chart = build_chart_embed(
                 details, color=color, lowest_historical=lowest_rec, itad_data=itad_data, history_count=len(history)
             )
             await interaction.followup.send(
                 embeds=[card_info, card_chart],
-                file=file,
+                files=files_to_send,
                 view=view,
             )
             return
 
-    await interaction.followup.send(embed=card_info, view=view)
+    if files_to_send:
+        await interaction.followup.send(embed=card_info, files=files_to_send, view=view)
+    else:
+        await interaction.followup.send(embed=card_info, view=view)
 
 
 # ==============================================================================
