@@ -7,6 +7,7 @@ from collections import OrderedDict
 import html
 import logging
 import random
+import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 import httpx
@@ -134,6 +135,48 @@ def sanitize_text(text: str) -> str:
     if not text:
         return ""
     return html.unescape(text).strip()
+
+
+def _clean_fetch_url(url: str) -> str:
+    """Remove wrappers de proxy/fetch (ex: image/fetch/q_auto/f_auto/https://...) que causam falhas no Discord."""
+    if not url:
+        return ""
+    if "image/fetch" in url:
+        idx = url.find("image/fetch")
+        nested = url[idx + 11:]
+        m = re.search(r"https?://[^\s\"']+", nested)
+        if m:
+            return m.group(0)
+    return url
+
+
+def _extract_clean_image_url(hit: Dict[str, Any], default: str = DEFAULT_ESHOP_BANNER) -> str:
+    """Extrai a URL de imagem widescreen de maior qualidade e 100% compatível com Discord Embeds."""
+    # 1. Prioridade: Imagem principal de produto widescreen do Cloudinary (1200px)
+    pimg = hit.get("productImage")
+    if pimg:
+        if isinstance(pimg, str) and not pimg.startswith("http"):
+            clean_path = pimg.lstrip("/")
+            return f"https://assets.nintendo.com/image/upload/c_fill,w_1200/{clean_path}"
+        cleaned = _clean_fetch_url(str(pimg))
+        if cleaned:
+            return cleaned
+
+    # 2. Prioridade: Imagem quadrada / Box Art (limpa)
+    sq = hit.get("productImageSquare")
+    if sq:
+        cleaned = _clean_fetch_url(str(sq))
+        if cleaned:
+            return cleaned
+
+    # 3. Prioridade: Galeria de imagens
+    gallery = hit.get("productGallery") or []
+    for g in gallery:
+        if isinstance(g, dict) and g.get("resourceType") == "image" and g.get("publicId"):
+            pid = str(g["publicId"]).lstrip("/")
+            return f"https://assets.nintendo.com/image/upload/c_fill,w_1200/{pid}"
+
+    return default
 
 
 async def _fetch_with_retry(
@@ -300,10 +343,7 @@ async def _search_algolia_americas(
 
                 raw_title = hit.get("title", "Jogo Nintendo")
                 title = sanitize_text(raw_title)[:200]
-                banner = (
-                    hit.get("productImageSquare")
-                    or (f"https://assets.nintendo.com/image/upload/{hit['productImage']}" if hit.get("productImage") else DEFAULT_ESHOP_BANNER)
-                )
+                banner = _extract_clean_image_url(hit)
                 url_path = hit.get("url", "")
                 store_url = (
                     f"https://www.nintendo.com{url_path}"
@@ -411,7 +451,7 @@ async def search_eshop_games(
 
         nsuid = nsuid_list[0] if isinstance(nsuid_list, list) else str(nsuid_list)
         title = sanitize_text(doc.get("title", "Jogo Nintendo"))[:200]
-        image_url = doc.get("image_url_h2x") or doc.get("image_url") or DEFAULT_ESHOP_BANNER
+        image_url = _clean_fetch_url(doc.get("image_url_h2x") or doc.get("image_url") or DEFAULT_ESHOP_BANNER)
         relative_url = doc.get("url", "")
         store_url = (
             f"https://www.nintendo.com{relative_url}"
@@ -504,10 +544,7 @@ async def get_eshop_game_details(
             if hits:
                 hit = hits[0]
                 title = sanitize_text(hit.get("title", title))[:240]
-                banner = (
-                    hit.get("productImageSquare")
-                    or (f"https://assets.nintendo.com/image/upload/{hit['productImage']}" if hit.get("productImage") else banner)
-                )
+                banner = _extract_clean_image_url(hit, default=banner)
                 description = sanitize_text(hit.get("description", ""))[:500]
                 publishers = sanitize_text(hit.get("softwarePublisher", "")) or publishers
                 developers = sanitize_text(hit.get("softwareDeveloper", "")) or developers
