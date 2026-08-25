@@ -66,6 +66,26 @@ async def init_db(db_path: str = DB_PATH) -> None:
             )
             """
         )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS guild_configs (
+                guild_id INTEGER PRIMARY KEY,
+                free_games_channel_id INTEGER,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS posted_giveaways (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                giveaway_id TEXT NOT NULL,
+                guild_id INTEGER NOT NULL,
+                posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(giveaway_id, guild_id)
+            )
+            """
+        )
 
         # Migrações automáticas não-destrutivas
         try:
@@ -528,3 +548,71 @@ async def get_lowest_historical_price(
         )
         row = await cursor.fetchone()
         return float(row[0]) if (row and row[0] is not None) else None
+
+
+async def set_free_games_channel(guild_id: int, channel_id: Optional[int], db_path: str = DB_PATH) -> bool:
+    """Configura ou remove o canal designado para notificações de jogos 100% grátis na guilda."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("PRAGMA busy_timeout = 5000;")
+        await db.execute(
+            """
+            INSERT INTO guild_configs (guild_id, free_games_channel_id, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(guild_id) DO UPDATE SET
+                free_games_channel_id = excluded.free_games_channel_id,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (guild_id, channel_id),
+        )
+        await db.commit()
+        return True
+
+
+async def get_free_games_channel(guild_id: int, db_path: str = DB_PATH) -> Optional[int]:
+    """Retorna o ID do canal configurado para avisos de jogos grátis no servidor."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("PRAGMA busy_timeout = 5000;")
+        cursor = await db.execute(
+            "SELECT free_games_channel_id FROM guild_configs WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+        return int(row[0]) if (row and row[0] is not None) else None
+
+
+async def get_all_free_games_channels(db_path: str = DB_PATH) -> List[Tuple[int, int]]:
+    """Retorna lista de todas as guildas e respectivos canais configurados para avisos grátis."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("PRAGMA busy_timeout = 5000;")
+        cursor = await db.execute(
+            "SELECT guild_id, free_games_channel_id FROM guild_configs WHERE free_games_channel_id IS NOT NULL"
+        )
+        rows = await cursor.fetchall()
+        return [(int(r[0]), int(r[1])) for r in rows]
+
+
+async def is_giveaway_posted(giveaway_id: str, guild_id: int, db_path: str = DB_PATH) -> bool:
+    """Verifica se um giveaway específico já foi publicado no servidor indicado."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("PRAGMA busy_timeout = 5000;")
+        cursor = await db.execute(
+            "SELECT 1 FROM posted_giveaways WHERE giveaway_id = ? AND guild_id = ?",
+            (str(giveaway_id), guild_id),
+        )
+        row = await cursor.fetchone()
+        return row is not None
+
+
+async def record_posted_giveaway(giveaway_id: str, guild_id: int, db_path: str = DB_PATH) -> bool:
+    """Registra que o giveaway foi postado no servidor para evitar avisos duplicados."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("PRAGMA busy_timeout = 5000;")
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO posted_giveaways (giveaway_id, guild_id)
+            VALUES (?, ?)
+            """,
+            (str(giveaway_id), guild_id),
+        )
+        await db.commit()
+        return True

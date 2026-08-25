@@ -698,16 +698,42 @@ async def send_game_response(
         except Exception as exc:
             logger.warning("Falha ao anexar banner localmente, usando URL remota: %s", exc)
 
-    # Envio de gráfico se houver histórico e permissão de Attach Files
-    if history and len(history) >= 2 and perms["attach_files"]:
+    # Envio de gráfico se houver histórico (ou síntese via ITAD) e permissão de Attach Files
+    plot_history = list(history) if history else []
+    if len(plot_history) < 2 and (itad_data or details.get("initial_price")):
+        init_p = details.get("initial_price", current_p)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        synth = []
+        if itad_data and itad_data.get("amount") is not None:
+            itad_p = float(itad_data["amount"])
+            rec_date = itad_data.get("recorded_at") or itad_data.get("recorded_date") or "2023-01-01T00:00:00"
+            if "T" not in str(rec_date):
+                try:
+                    parts = str(rec_date).split("/")
+                    if len(parts) == 3:
+                        rec_date = f"{parts[2]}-{parts[1]}-{parts[0]}T00:00:00"
+                except Exception:
+                    rec_date = "2023-01-01T00:00:00"
+            synth.append(("2022-01-01T00:00:00", init_p if init_p > 0 else itad_p * 1.5))
+            synth.append((str(rec_date), itad_p))
+            synth.append((now_iso, current_p))
+        elif init_p > 0 and current_p > 0:
+            synth.append(("2023-01-01T00:00:00", init_p))
+            synth.append((now_iso, current_p))
+
+        if len(synth) >= 2:
+            synth.sort(key=lambda x: str(x[0]))
+            plot_history = synth
+
+    if plot_history and len(plot_history) >= 2 and perms["attach_files"]:
         chart_buffer = await asyncio.to_thread(
-            gerar_grafico_historico, details["title"], history, currency=currency, country_code=country_code
+            gerar_grafico_historico, details["title"], plot_history, currency=currency, country_code=country_code
         )
 
         if chart_buffer is not None:
             files_to_send.append(discord.File(fp=chart_buffer, filename="price_chart.png"))
             card_chart = build_chart_embed(
-                details, color=color, lowest_historical=lowest_rec, itad_data=itad_data, history_count=len(history)
+                details, color=color, lowest_historical=lowest_rec, itad_data=itad_data, history_count=max(len(history), len(plot_history))
             )
             await interaction.followup.send(
                 embeds=[card_info, card_chart],
@@ -830,7 +856,7 @@ async def cmd_comparar(
     logger.info("/comparar [%s] '%s' por %s", plat_key, jogo, interaction.user)
 
     try:
-        regions_to_compare = ["BR", "US", "PT", "JP"]
+        regions_to_compare = ["BR", "US", "CA", "PT", "JP"]
 
         # Identifica ID do jogo
         if plat_key == "steam":
@@ -1175,7 +1201,8 @@ async def cmd_gratis(interaction: discord.Interaction):
             worth = item.get("worth", "N/A")
             end_date = item.get("end_date", "Por tempo limitado")
             url = item.get("url", "https://store.steampowered.com/")
-            clean_inst = instructions.replace("\n", " ").strip()
+            instructions_txt = item.get("instructions", "Resgate diretamente na loja da Steam.")
+            clean_inst = instructions_txt.replace("\n", " ").strip()
             if len(clean_inst) > 130:
                 clean_inst = clean_inst[:127] + "..."
 
@@ -1199,6 +1226,53 @@ async def cmd_gratis(interaction: discord.Interaction):
     except Exception as exc:
         logger.error("Erro no comando /gratis: %s", exc, exc_info=True)
         await interaction.followup.send("⚠️ Erro ao consultar promoções gratuitas na Steam.", ephemeral=True)
+
+
+@bot.tree.command(name="canal_gratis", description="Define ou remove o canal de avisos de jogos 100% grátis na Steam (Free to Keep).")
+@app_commands.describe(
+    canal="Canal de texto onde os alertas serão enviados (deixe vazio para desativar)",
+)
+@app_commands.default_permissions(manage_guild=True)
+async def cmd_canal_gratis(
+    interaction: discord.Interaction,
+    canal: Optional[discord.TextChannel] = None,
+):
+    """Configura o canal de alertas automáticos de jogos grátis da Steam no servidor."""
+    if not interaction.guild_id:
+        await interaction.response.send_message("❌ Este comando deve ser executado dentro de um servidor.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if canal is not None:
+            me = interaction.guild.me if interaction.guild else None
+            perms = check_channel_permissions(canal, me)
+            if not perms["send_messages"] or not perms["embed_links"]:
+                await interaction.followup.send(
+                    f"⚠️ O bot não possui permissão de **Enviar Mensagens** e **Inserir Links** no canal {canal.mention}.",
+                    ephemeral=True,
+                )
+                return
+
+            await db.set_free_games_channel(interaction.guild_id, canal.id, db_path=db.DB_PATH)
+            embed = discord.Embed(
+                title="🎁 Canal de Jogos Grátis Configurado!",
+                description=(
+                    f"O canal {canal.mention} foi definido com sucesso para receber alertas de **jogos 100% grátis da Steam (Free to Keep)**.\n\n"
+                    f"• **Frequência:** Verificação automática a cada 1 hora\n"
+                    f"• **Menções:** Nenhuma (sem spam de `@everyone`)\n"
+                    f"• **Conteúdo:** Embed com valor original, banner e botão de resgate"
+                ),
+                color=0xF1C40F,
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await db.set_free_games_channel(interaction.guild_id, None, db_path=db.DB_PATH)
+            await interaction.followup.send("🔕 Alertas automáticos de jogos grátis foram **desativados** neste servidor.", ephemeral=True)
+
+    except Exception as exc:
+        logger.error("Erro no comando /canal_gratis: %s", exc, exc_info=True)
+        await interaction.followup.send("⚠️ Erro ao configurar canal de jogos grátis.", ephemeral=True)
 
 
 @bot.tree.command(name="status", description="Exibe a telemetria do bot, tempo de atividade, uso de RAM e dados do SQLite.")
@@ -1400,6 +1474,95 @@ async def price_checker_worker():
         logger.error("Exceção geral no worker periódico: %s", exc, exc_info=True)
 
 
+@tasks.loop(hours=1)
+async def check_free_games_feed():
+    """Verifica novos jogos 100% grátis na Steam (Free to Keep) e anuncia nos canais configurados sem @everyone."""
+    try:
+        channels = await db.get_all_free_games_channels(db_path=db.DB_PATH)
+        if not channels:
+            return
+
+        active_giveaways = await giveaways.get_steam_giveaways(client=bot.http_session)
+        if not active_giveaways:
+            return
+
+        for guild_id, channel_id in channels:
+            try:
+                ch = bot.get_channel(channel_id)
+                if ch is None:
+                    try:
+                        ch = await bot.fetch_channel(channel_id)
+                    except Exception:
+                        continue
+                if not ch:
+                    continue
+
+                for item in active_giveaways:
+                    g_id = str(item.get("id"))
+                    already_posted = await db.is_giveaway_posted(g_id, guild_id, db_path=db.DB_PATH)
+                    if already_posted:
+                        continue
+
+                    embed = discord.Embed(
+                        title=f"🎁 Novo Jogo 100% Grátis na Steam: {clean_str(item.get('title', 'Jogo'), 180)}",
+                        description=(
+                            f"**{clean_str(item.get('title', 'Jogo'), 180)}** está gratuito por tempo limitado!\n"
+                            f"Resgate para sua conta Steam e ele será **seu para sempre** na biblioteca.\n"
+                        ),
+                        color=0xF1C40F,
+                        url=item.get("url", "https://store.steampowered.com"),
+                    )
+
+                    embed.add_field(
+                        name="💰 Preço Original",
+                        value=f"~~{item.get('worth', '$0.00')}~~ ➔ **GRÁTIS (100% OFF)**",
+                        inline=True,
+                    )
+                    embed.add_field(
+                        name="⏳ Disponibilidade",
+                        value=f"`{item.get('end_date', 'Por tempo limitado')}`",
+                        inline=True,
+                    )
+
+                    instructions_txt = item.get("instructions", "Resgate diretamente na página do jogo na Steam.")
+                    clean_inst = instructions_txt.replace("\n", " ").strip()
+                    if len(clean_inst) > 130:
+                        clean_inst = clean_inst[:127] + "..."
+                    embed.add_field(
+                        name="📝 Como Resgatar",
+                        value=f"*{clean_inst}*",
+                        inline=False,
+                    )
+
+                    thumb = item.get("thumbnail")
+                    if thumb and str(thumb).startswith("http"):
+                        embed.set_image(url=thumb)
+
+                    embed.set_footer(text="PriceTracker • Alerta Automático de Jogos Grátis Steam (Sem @everyone)")
+
+                    view = discord.ui.View()
+                    view.add_item(
+                        discord.ui.Button(
+                            label="Resgatar na Steam",
+                            style=discord.ButtonStyle.link,
+                            url=item.get("url", "https://store.steampowered.com"),
+                            emoji="🎁",
+                        )
+                    )
+
+                    # Envio direto sem menção @everyone
+                    await ch.send(embed=embed, view=view)
+                    await db.record_posted_giveaway(g_id, guild_id, db_path=db.DB_PATH)
+                    logger.info("Giveaway '%s' anunciado no canal %s (Guild %s)", item.get("title"), channel_id, guild_id)
+                    await asyncio.sleep(1.0)
+
+            except Exception as guild_err:
+                logger.error("Erro ao processar feed grátis na guilda %s: %s", guild_id, guild_err)
+
+    except Exception as exc:
+        logger.error("Erro no worker de jogos grátis: %s", exc, exc_info=True)
+
+
 @tasks.loop(hours=24)
 async def database_backup_worker():
     """Worker de Backup a Quente do SQLite (24h) com envio consolidado para canal privado do Discord."""
@@ -1491,6 +1654,10 @@ async def on_ready():
     if not price_checker_worker.is_running():
         price_checker_worker.start()
         logger.info("Worker de checagem a cada 4 horas iniciado.")
+
+    if not check_free_games_feed.is_running():
+        check_free_games_feed.start()
+        logger.info("Worker de alertas de jogos grátis Steam (1h) iniciado.")
 
     if BACKUP_CHANNEL_ID and BACKUP_CHANNEL_ID.strip():
         if not database_backup_worker.is_running():

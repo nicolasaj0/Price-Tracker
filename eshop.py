@@ -575,10 +575,11 @@ async def get_eshop_game_details(
     price_info = None
     try:
         cli = client or await get_http_client()
+        algolia_index = "store_game_pt_br" if cc == "BR" else ("store_game_en_ca" if cc == "CA" else "store_game_en_us")
         body = {
             "requests": [
                 {
-                    "indexName": "store_game_pt_br" if cc == "BR" else "store_game_en_us",
+                    "indexName": algolia_index,
                     "params": f"query={nsuid}&hitsPerPage=1",
                 }
             ]
@@ -596,6 +597,51 @@ async def get_eshop_game_details(
                 if hit.get("url"):
                     store_url = f"https://www.nintendo.com{hit['url']}"
                 price_info = _parse_algolia_price_details(hit.get("eshopDetails"), country_code=cc)
+
+        # Para Europa (PT, ES, FR, DE, IT, GB): consulta Solr para obter preços oficiais em EUR / GBP
+        if cc in ("PT", "ES", "FR", "DE", "IT", "GB") and title:
+            try:
+                lang_eu = get_eshop_lang(cc)
+                url_eu = ESHOP_EUROPE_SEARCH_URL.format(lang=lang_eu if lang_eu in ("pt", "en", "es", "de", "fr", "it") else "en")
+                resp_eu = await cli.get(url_eu, params={"q": title, "fq": "type:GAME", "wt": "json", "rows": 1}, timeout=5.0)
+                if resp_eu.status_code == 200:
+                    docs_eu = resp_eu.json().get("response", {}).get("docs", [])
+                    if docs_eu:
+                        d_eu = docs_eu[0]
+                        reg_f = d_eu.get("price_regular_f")
+                        disc_f = d_eu.get("price_discounted_f")
+                        curr_eu = "GBP" if cc == "GB" else "EUR"
+                        if reg_f is not None:
+                            reg_val = float(reg_f)
+                            disc_val = float(disc_f) if disc_f is not None else reg_val
+                            disc_p = round(((reg_val - disc_val) / reg_val) * 100) if (reg_val > 0 and disc_val < reg_val) else 0
+                            price_info = {
+                                "sales_status": "onsale",
+                                "country": cc,
+                                "currency": curr_eu,
+                                "current_price": disc_val,
+                                "initial_price": reg_val,
+                                "discount_percent": disc_p,
+                                "current_formatted": format_currency_global(disc_val, curr_eu, cc),
+                                "initial_formatted": format_currency_global(reg_val, curr_eu, cc),
+                                "on_sale": disc_p > 0,
+                                "discount_end": None,
+                            }
+            except Exception:
+                pass
+
+        # Para Japão (JP): se preço veio em USD, ajusta moeda e formatação para JPY
+        if cc == "JP" and price_info:
+            price_info["currency"] = "JPY"
+            # Conversão base de paridade USD -> JPY (~150)
+            usd_curr = price_info.get("current_price", 0.0)
+            usd_init = price_info.get("initial_price", 0.0)
+            jpy_curr = round(usd_curr * 150)
+            jpy_init = round(usd_init * 150)
+            price_info["current_price"] = jpy_curr
+            price_info["initial_price"] = jpy_init
+            price_info["current_formatted"] = format_currency_global(jpy_curr, "JPY", "JP")
+            price_info["initial_formatted"] = format_currency_global(jpy_init, "JPY", "JP")
     except Exception:
         pass
 

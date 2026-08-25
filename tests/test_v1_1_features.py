@@ -134,23 +134,32 @@ async def run_v1_1_tests():
         print("  ✓ Helper de permissões validado com valores padrão seguros.")
 
         # ----------------------------------------------------------------------
-        # 5. Teste de Consulta Concorrente para /comparar (asyncio.gather)
+        # 5. Teste de Consulta Concorrente para /comparar (asyncio.gather) com 5 Regiões
         # ----------------------------------------------------------------------
-        print("\n[5/6] 🌐 Testando Lógica Concorrente do /comparar...")
-        regions = ["BR", "US", "PT", "JP"]
+        print("\n[5/7] 🌐 Testando Lógica Concorrente do /comparar com 5 Regiões (BR, US, CA, PT, JP)...")
+        regions = ["BR", "US", "CA", "PT", "JP"]
         compare_tasks = [steam.get_steam_game_details("620", country_code=c) for c in regions]
         comp_results = await asyncio.gather(*compare_tasks)
 
-        assert len(comp_results) == 4, f"Esperado 4 resultados regionais, obtido {len(comp_results)}"
+        assert len(comp_results) == 5, f"Esperado 5 resultados regionais, obtido {len(comp_results)}"
         for r in comp_results:
             assert r is not None and "current_formatted" in r
             print(f"     • {r['country_code']}: {r['current_formatted']} ({r['currency']})")
-        print("  ✓ Consulta paralela em 4 regiões finalizada com sucesso.")
+        print("  ✓ Consulta paralela em 5 regiões finalizada com sucesso.")
 
         # ----------------------------------------------------------------------
-        # 6. Teste do Módulo de Giveaways & Jogos 100% Grátis
+        # 6. Teste de Configuração de Canal de Jogos Grátis e Giveaways
         # ----------------------------------------------------------------------
-        print("\n[6/7] 🎁 Testando Módulo de Giveaways (Jogos 100% Grátis na Steam)...")
+        print("\n[6/7] 🎁 Testando Módulo de Giveaways & Configuração de Canal de Avisos...")
+        await db.set_free_games_channel(guild_id=12345, channel_id=98765, db_path=temp_db)
+        saved_ch = await db.get_free_games_channel(guild_id=12345, db_path=temp_db)
+        assert saved_ch == 98765, "Canal de jogos grátis não persistido corretamente"
+
+        giveaway_test_id = "steam_test_gw_1"
+        assert not await db.is_giveaway_posted(giveaway_test_id, guild_id=12345, db_path=temp_db)
+        await db.record_posted_giveaway(giveaway_test_id, guild_id=12345, db_path=temp_db)
+        assert await db.is_giveaway_posted(giveaway_test_id, guild_id=12345, db_path=temp_db)
+
         giveaways_list = await giveaways.get_steam_giveaways()
         assert isinstance(giveaways_list, list), "giveaways_list deve ser uma lista"
         print(f"  ✓ Giveaways ativos identificados: {len(giveaways_list)}")
@@ -158,13 +167,13 @@ async def run_v1_1_tests():
             print(f"     • {g['title']} | Valor: {g['worth']} | Expira: {g['end_date']}")
 
         # ----------------------------------------------------------------------
-        # 7. Verificação dos 9 Slash Commands na CommandTree
+        # 7. Verificação dos 10 Slash Commands na CommandTree
         # ----------------------------------------------------------------------
         print("\n[7/7] 🌲 Verificando Comandos Slash na CommandTree...")
         cmds = {cmd.name for cmd in bot.bot.tree.get_commands()}
-        expected_cmds = {"steam", "eshop", "historico", "monitorar", "listar", "remover", "comparar", "status", "gratis"}
+        expected_cmds = {"steam", "eshop", "historico", "monitorar", "listar", "remover", "comparar", "status", "gratis", "canal_gratis"}
         assert expected_cmds.issubset(cmds), f"Comandos ausentes: {expected_cmds - cmds}"
-        print(f"  ✓ Todos os 9 Slash Commands registrados com sucesso: {sorted(list(cmds))}")
+        print(f"  ✓ Todos os 10 Slash Commands registrados com sucesso: {sorted(list(cmds))}")
 
     finally:
         if os.path.exists(temp_db):
