@@ -98,7 +98,7 @@ async def get_steam_all_time_low(
 
     Retorna None caso a chave não esteja configurada, ocorra timeout ou falha na API.
     """
-    key = (api_key or os.getenv("ITAD_API_KEY", "")).strip()
+    key = (api_key if api_key is not None else os.getenv("ITAD_API_KEY", "")).strip()
     if not key:
         return None
 

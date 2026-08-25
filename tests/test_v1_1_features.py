@@ -25,6 +25,7 @@ import bot
 import chart
 import db
 import eshop
+import giveaways
 import steam
 
 
@@ -147,19 +148,30 @@ async def run_v1_1_tests():
         print("  ✓ Consulta paralela em 4 regiões finalizada com sucesso.")
 
         # ----------------------------------------------------------------------
-        # 6. Verificação dos 8 Slash Commands na CommandTree
+        # 6. Teste do Módulo de Giveaways & Jogos 100% Grátis
         # ----------------------------------------------------------------------
-        print("\n[6/6] 🌲 Verificando Comandos Slash v1.1 na CommandTree...")
+        print("\n[6/7] 🎁 Testando Módulo de Giveaways (Jogos 100% Grátis na Steam)...")
+        giveaways_list = await giveaways.get_steam_giveaways()
+        assert isinstance(giveaways_list, list), "giveaways_list deve ser uma lista"
+        print(f"  ✓ Giveaways ativos identificados: {len(giveaways_list)}")
+        for g in giveaways_list[:2]:
+            print(f"     • {g['title']} | Valor: {g['worth']} | Expira: {g['end_date']}")
+
+        # ----------------------------------------------------------------------
+        # 7. Verificação dos 9 Slash Commands na CommandTree
+        # ----------------------------------------------------------------------
+        print("\n[7/7] 🌲 Verificando Comandos Slash na CommandTree...")
         cmds = {cmd.name for cmd in bot.bot.tree.get_commands()}
-        expected_cmds = {"steam", "eshop", "historico", "monitorar", "listar", "remover", "comparar", "status"}
+        expected_cmds = {"steam", "eshop", "historico", "monitorar", "listar", "remover", "comparar", "status", "gratis"}
         assert expected_cmds.issubset(cmds), f"Comandos ausentes: {expected_cmds - cmds}"
-        print(f"  ✓ Todos os 8 Slash Commands registrados com sucesso: {sorted(list(cmds))}")
+        print(f"  ✓ Todos os 9 Slash Commands registrados com sucesso: {sorted(list(cmds))}")
 
     finally:
         if os.path.exists(temp_db):
             os.remove(temp_db)
         await steam.close_http_client()
         await eshop.close_http_client()
+        await giveaways.close_http_client()
 
     print("\n" + "=" * 75)
     print("🎉 HOMOLOGAÇÃO DA VERSÃO v1.1 CONCLUÍDA COM 100% DE SUCESSO!")

@@ -70,6 +70,7 @@ No painel de OAuth2 URL Generator do Discord Developer Portal, selecione os esco
 | `/monitorar` | `plataforma` (Literal), `jogo` (String), `preco_alvo` (Float, opcional), `regiao` (Choice, opcional), `privado` (Bool, opcional) | Registra alerta personalizado. Se `privado=True`, o alerta é entregue diretamente via DM com fallback automático para o canal caso a DM esteja fechada. |
 | `/listar` | Nenhum | Exibe a lista paginada de todos os monitoramentos ativos cadastrados pelo usuário no canal atual (com indicação de bandeira, moeda e badge de DM). |
 | `/remover` | Nenhum | Apresenta um menu suspenso (`Select Menu`) contendo os jogos rastreados pelo usuário no canal para exclusão imediata do alerta. |
+| `/gratis` | Nenhum | Rastreador de Giveaways e promoções temporárias de 100% OFF (*Free to Keep*) na Steam. Exibe valor original riscado, data de término do resgate e botões de link direto para adicionar à biblioteca. |
 | `/status` | Nenhum | Painel de telemetria e diagnóstico exibindo latência do WebSocket, tempo de atividade (*Uptime*), pico de consumo de memória RAM do processo e contadores do SQLite. |
 
 ---

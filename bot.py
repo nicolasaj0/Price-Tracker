@@ -23,6 +23,7 @@ import httpx
 from chart import gerar_grafico_historico
 import db
 import eshop
+import giveaways
 import itad
 import steam
 
@@ -1122,6 +1123,64 @@ async def cmd_remover(interaction: discord.Interaction):
     except Exception as exc:
         logger.error("Erro no comando /remover: %s", exc, exc_info=True)
         await interaction.followup.send("⚠️ Erro ao carregar opções de remoção.", ephemeral=True)
+
+
+@bot.tree.command(name="gratis", description="Lista jogos pagos da Steam que estão temporariamente 100% GRÁTIS para resgatar.")
+async def cmd_gratis(interaction: discord.Interaction):
+    """Comando para descobrir jogos pagos da Steam em promoção 100% OFF (Free to Keep)."""
+    await interaction.response.defer()
+    logger.info("/gratis solicitado por %s", interaction.user)
+
+    try:
+        items = await giveaways.get_steam_giveaways()
+        if not items:
+            embed = discord.Embed(
+                title="🎁 Jogos Grátis na Steam (Free to Keep)",
+                color=0x95a5a6,
+                description=(
+                    "ℹ️ No momento **não há nenhum jogo pago com promoção de 100% OFF** ativa para resgate permanente na Steam.\n\n"
+                    "*(Jogos sempre gratuitos/Free-to-Play não são listados aqui, apenas promoções temporárias de jogos pagos).*"
+                ),
+            )
+            embed.set_footer(text="PriceTracker v1.1 • Atualizado a cada 30min")
+            await interaction.followup.send(embed=embed)
+            return
+
+        embed = discord.Embed(
+            title=f"🎁 Jogos 100% Grátis na Steam ({len(items)} disponíveis)",
+            color=0xf1c40f,  # Dourado Lendário 100% OFF
+            description="Aproveite para resgatar e adicionar permanentemente à sua biblioteca Steam:",
+        )
+
+        view = discord.ui.View(timeout=180)
+
+        for idx, item in enumerate(items[:5], start=1):
+            title = item.get("title", "Jogo Steam")
+            worth = item.get("worth", "N/A")
+            end_date = item.get("end_date", "Por tempo limitado")
+            url = item.get("url", "https://store.steampowered.com/")
+            instructions = item.get("instructions", "Resgate na Steam")
+
+            field_val = (
+                f"💰 **Valor Original:** `{worth}` $\\rightarrow$ **GRÁTIS!**\n"
+                f"⏳ **Expira em:** {end_date}\n"
+                f"📝 {instructions}"
+            )
+            embed.add_field(name=f"🎮 {idx}. {title}", value=field_val, inline=False)
+
+            button_label = f"Resgatar {title}"[:80]
+            view.add_item(discord.ui.Button(label=button_label, url=url, style=discord.ButtonStyle.link, emoji="🎁"))
+
+        first_thumb = items[0].get("thumbnail")
+        if first_thumb and str(first_thumb).startswith("http"):
+            embed.set_image(url=first_thumb)
+
+        embed.set_footer(text="PriceTracker v1.1 • Giveaways & Free to Keep • Cache 30min")
+        await interaction.followup.send(embed=embed, view=view)
+
+    except Exception as exc:
+        logger.error("Erro no comando /gratis: %s", exc, exc_info=True)
+        await interaction.followup.send("⚠️ Erro ao consultar promoções gratuitas na Steam.", ephemeral=True)
 
 
 @bot.tree.command(name="status", description="Exibe a telemetria do bot, tempo de atividade, uso de RAM e dados do SQLite.")
