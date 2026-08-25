@@ -163,9 +163,13 @@ def _extract_clean_image_url(hit: Dict[str, Any], default: str = DEFAULT_ESHOP_B
     if pimg:
         if isinstance(pimg, str) and not pimg.startswith("http"):
             clean_path = pimg.lstrip("/")
+            if not clean_path.endswith((".jpg", ".png", ".jpeg", ".webp")):
+                clean_path += ".jpg"
             return f"https://assets.nintendo.com/image/upload/c_fill,w_1200/{clean_path}"
         cleaned = _clean_fetch_url(str(pimg))
         if cleaned:
+            if not cleaned.endswith((".jpg", ".png", ".jpeg", ".webp")) and "assets.nintendo.com" in cleaned:
+                cleaned += ".jpg"
             return cleaned
 
     # 2. Prioridade: Imagem quadrada / Box Art (limpa)
@@ -173,6 +177,8 @@ def _extract_clean_image_url(hit: Dict[str, Any], default: str = DEFAULT_ESHOP_B
     if sq:
         cleaned = _clean_fetch_url(str(sq))
         if cleaned:
+            if not cleaned.endswith((".jpg", ".png", ".jpeg", ".webp")) and "assets.nintendo.com" in cleaned:
+                cleaned += ".jpg"
             return cleaned
 
     # 3. Prioridade: Galeria de imagens
@@ -180,6 +186,8 @@ def _extract_clean_image_url(hit: Dict[str, Any], default: str = DEFAULT_ESHOP_B
     for g in gallery:
         if isinstance(g, dict) and g.get("resourceType") == "image" and g.get("publicId"):
             pid = str(g["publicId"]).lstrip("/")
+            if not pid.endswith((".jpg", ".png", ".jpeg", ".webp")):
+                pid += ".jpg"
             return f"https://assets.nintendo.com/image/upload/c_fill,w_1200/{pid}"
 
     return default
