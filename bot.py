@@ -690,7 +690,7 @@ async def send_game_response(
     banner_url = details.get("header_image")
     if banner_url and str(banner_url).startswith("http") and perms.get("attach_files", True):
         try:
-            cli = await get_http_client()
+            cli = bot.http_session or await steam.get_http_client()
             resp_banner = await cli.get(banner_url, timeout=3.5)
             if resp_banner.status_code == 200 and len(resp_banner.content) > 500:
                 files_to_send.append(discord.File(fp=io.BytesIO(resp_banner.content), filename="banner.jpg"))
