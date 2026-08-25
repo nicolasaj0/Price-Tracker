@@ -637,6 +637,7 @@ async def send_game_response(
     interaction: discord.Interaction,
     details: Dict[str, Any],
     title_prefix: str = "",
+    force_chart: bool = False,
 ) -> None:
     """Monta a resposta com Multi-Embed Stack (Card 1 + Card 2 com Gráfico) ou Fallback."""
     platform = details.get("platform", "steam")
@@ -691,16 +692,16 @@ async def send_game_response(
     if banner_url and str(banner_url).startswith("http") and perms.get("attach_files", True):
         try:
             cli = bot.http_session or await steam.get_http_client()
-            resp_banner = await cli.get(banner_url, timeout=3.5)
+            resp_banner = await cli.get(banner_url, timeout=3.0)
             if resp_banner.status_code == 200 and len(resp_banner.content) > 500:
                 files_to_send.append(discord.File(fp=io.BytesIO(resp_banner.content), filename="banner.jpg"))
                 card_info.set_image(url="attachment://banner.jpg")
         except Exception as exc:
             logger.warning("Falha ao anexar banner localmente, usando URL remota: %s", exc)
 
-    # Envio de gráfico se houver histórico (ou síntese via ITAD) e permissão de Attach Files
+    # Envio de gráfico se houver histórico (ou síntese via ITAD no comando /historico)
     plot_history = list(history) if history else []
-    if len(plot_history) < 2 and (itad_data or details.get("initial_price")):
+    if force_chart and len(plot_history) < 2 and (itad_data or details.get("initial_price")):
         init_p = details.get("initial_price", current_p)
         now_iso = datetime.now(timezone.utc).isoformat()
         synth = []
@@ -725,26 +726,36 @@ async def send_game_response(
             synth.sort(key=lambda x: str(x[0]))
             plot_history = synth
 
-    if plot_history and len(plot_history) >= 2 and perms["attach_files"]:
-        chart_buffer = await asyncio.to_thread(
-            gerar_grafico_historico, details["title"], plot_history, currency=currency, country_code=country_code
-        )
-
-        if chart_buffer is not None:
-            files_to_send.append(discord.File(fp=chart_buffer, filename="price_chart.png"))
-            card_chart = build_chart_embed(
-                details, color=color, lowest_historical=lowest_rec, itad_data=itad_data, history_count=max(len(history), len(plot_history))
+    should_plot = (len(plot_history) >= 2) if force_chart else (len(history) >= 2)
+    if should_plot and perms["attach_files"]:
+        try:
+            chart_buffer = await asyncio.to_thread(
+                gerar_grafico_historico, details["title"], plot_history, currency=currency, country_code=country_code
             )
-            await interaction.followup.send(
-                embeds=[card_info, card_chart],
-                files=files_to_send,
-                view=view,
-            )
-            return
 
-    if files_to_send:
-        await interaction.followup.send(embed=card_info, files=files_to_send, view=view)
-    else:
+            if chart_buffer is not None:
+                files_to_send.append(discord.File(fp=chart_buffer, filename="price_chart.png"))
+                card_chart = build_chart_embed(
+                    details, color=color, lowest_historical=lowest_rec, itad_data=itad_data, history_count=max(len(history), len(plot_history))
+                )
+                await interaction.followup.send(
+                    embeds=[card_info, card_chart],
+                    files=files_to_send,
+                    view=view,
+                )
+                return
+        except Exception as chart_err:
+            logger.error("Erro ao gerar gráfico de histórico: %s", chart_err)
+
+    try:
+        if files_to_send:
+            await interaction.followup.send(embed=card_info, files=files_to_send, view=view)
+        else:
+            await interaction.followup.send(embed=card_info, view=view)
+    except Exception as send_err:
+        logger.error("Erro ao enviar embed com anexo: %s. Tentando envio simples...", send_err)
+        if banner_url:
+            card_info.set_image(url=banner_url)
         await interaction.followup.send(embed=card_info, view=view)
 
 
@@ -978,7 +989,7 @@ async def cmd_historico(
             await interaction.followup.send(f"❌ Jogo **{clean_str(jogo, 100)}** não encontrado na {plataforma} ({cc}).", ephemeral=True)
             return
 
-        await send_game_response(interaction, details, title_prefix="📊 ")
+        await send_game_response(interaction, details, title_prefix="📊 ", force_chart=True)
 
     except Exception as exc:
         logger.error("Erro no comando /historico: %s", exc, exc_info=True)
