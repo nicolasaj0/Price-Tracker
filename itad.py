@@ -171,7 +171,7 @@ async def get_steam_all_time_low(
         amount = float(price_obj.get("amount", 0.0))
         currency = price_obj.get("currency", "BRL" if cc == "BR" else "USD")
         cut = lowest_info.get("cut", 0)
-        recorded_at = lowest_info.get("recorded", "")
+        recorded_at = lowest_info.get("timestamp") or lowest_info.get("recorded") or ""
         formatted_date = format_itad_date(recorded_at)
 
         result = {

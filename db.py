@@ -536,18 +536,45 @@ async def get_lowest_historical_price(
     db_path: str = DB_PATH,
 ) -> Optional[float]:
     """Retorna o menor preço histórico já registrado para o jogo na região especificada."""
+    record = await get_lowest_historical_record(platform, game_id, country_code=country_code, db_path=db_path)
+    return record[0] if record else None
+
+
+async def get_lowest_historical_record(
+    platform: str,
+    game_id: str,
+    country_code: str = "BR",
+    db_path: str = DB_PATH,
+) -> Optional[Tuple[float, str]]:
+    """Retorna o menor preço histórico e a data (DD/MM/AAAA) em que ocorreu no banco local."""
     cc = country_code.upper().strip()
     async with aiosqlite.connect(db_path) as db:
         await db.execute("PRAGMA busy_timeout = 5000;")
         cursor = await db.execute(
             """
-            SELECT MIN(price) FROM price_history
+            SELECT price, recorded_at FROM price_history
             WHERE platform = ? AND game_id = ? AND country_code = ? AND price > 0
+            ORDER BY price ASC, id ASC LIMIT 1
             """,
             (platform.lower(), str(game_id), cc),
         )
         row = await cursor.fetchone()
-        return float(row[0]) if (row and row[0] is not None) else None
+        if row and row[0] is not None:
+            price_val = float(row[0])
+            dt_raw = str(row[1]) if row[1] else ""
+            dt_fmt = ""
+            if dt_raw:
+                try:
+                    clean_dt = dt_raw.replace("Z", "+00:00")
+                    if "T" in clean_dt:
+                        dt = datetime.fromisoformat(clean_dt)
+                    else:
+                        dt = datetime.strptime(clean_dt.split(".")[0], "%Y-%m-%d %H:%M:%S")
+                    dt_fmt = dt.strftime("%d/%m/%Y")
+                except Exception:
+                    dt_fmt = dt_raw.split("T")[0]
+            return price_val, dt_fmt
+        return None
 
 
 async def set_free_games_channel(guild_id: int, channel_id: Optional[int], db_path: str = DB_PATH) -> bool:

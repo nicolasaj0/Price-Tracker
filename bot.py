@@ -183,20 +183,22 @@ def build_info_embed(
     data: Dict[str, Any],
     color: int,
     lowest_historical: Optional[float] = None,
+    lowest_historical_date: Optional[str] = None,
     itad_data: Optional[Dict[str, Any]] = None,
     title_prefix: str = "",
 ) -> discord.Embed:
-    """Gera o Card 1 contendo título, metadados, preços regionais e banner oficial."""
-    is_sale = data.get("on_sale", False)
-    disc_pct = data.get("discount_percent", 0)
+    """Gera o Embed rico de informações do jogo com suporte multi-região."""
     platform = data.get("platform", "steam")
     country_code = data.get("country_code", "BR").upper()
     flag = COUNTRY_FLAGS.get(country_code, "🌐")
-    current_p = data.get("current_price", 0.0)
-    initial_p = data.get("initial_price", current_p)
-
     platform_name = "Steam" if platform == "steam" else "Nintendo eShop"
     platform_icon = "🎮" if platform == "steam" else "🔴"
+
+    current_p = data.get("current_price", 0.0)
+    initial_p = data.get("initial_price", current_p)
+    disc_pct = data.get("discount_percent", 0)
+    is_sale = data.get("on_sale", False) and current_p < initial_p
+
     clean_title = clean_str(data.get("title", "Jogo"), 180)
 
     # Tratamento especial de 100% OFF
@@ -268,14 +270,15 @@ def build_info_embed(
         cut_str = f" `(-{cut}%)`" if cut > 0 else ""
         embed.add_field(
             name="📉 Menor Histórico Real",
-            value=f"**{formatted_low}**{cut_str}{date_str}\n*(Fonte: ITAD)*",
+            value=f"**{formatted_low}**{cut_str}{date_str}\nFonte: ITAD",
             inline=True,
         )
     elif lowest_historical and lowest_historical > 0:
         formatted_low = steam.format_currency_global(lowest_historical, currency=currency, country_code=country_code)
+        date_str = f" em {lowest_historical_date}" if lowest_historical_date else ""
         embed.add_field(
             name="🏆 Menor Registrado",
-            value=f"**{formatted_low}**\n*(Banco Local)*",
+            value=f"**{formatted_low}**{date_str}\nBanco Local",
             inline=True,
         )
 
@@ -592,7 +595,9 @@ async def send_game_response(
     if current_p > 0:
         await db.record_price_history(game_id, platform, current_p, currency=currency, country_code=country_code, db_path=db.DB_PATH)
 
-    lowest_rec = await db.get_lowest_historical_price(platform, game_id, country_code=country_code, db_path=db.DB_PATH)
+    lowest_rec_tuple = await db.get_lowest_historical_record(platform, game_id, country_code=country_code, db_path=db.DB_PATH)
+    lowest_rec = lowest_rec_tuple[0] if lowest_rec_tuple else None
+    lowest_rec_date = lowest_rec_tuple[1] if lowest_rec_tuple else None
 
     # Consulta Menor Preço Histórico Real no IsThereAnyDeal se for Steam
     itad_data = None
@@ -626,7 +631,12 @@ async def send_game_response(
         return
 
     card_info = build_info_embed(
-        details, color=color, lowest_historical=lowest_rec, itad_data=itad_data, title_prefix=title_prefix
+        details,
+        color=color,
+        lowest_historical=lowest_rec,
+        lowest_historical_date=lowest_rec_date,
+        itad_data=itad_data,
+        title_prefix=title_prefix,
     )
 
     files_to_send = []
