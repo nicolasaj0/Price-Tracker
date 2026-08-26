@@ -1474,6 +1474,38 @@ async def database_backup_worker_error(error: Exception):
 
 
 
+_PRESENCE_INDEX = 0
+
+@tasks.loop(minutes=10)
+async def heartbeat_presence_worker():
+    """Worker de Liveness & Heartbeat (10 min) mantendo tráfego ativo no WebSocket e rotacionando status."""
+    global _PRESENCE_INDEX
+    try:
+        activities = [
+            discord.Activity(type=discord.ActivityType.watching, name="preços na Steam & eShop | /steam"),
+            discord.Activity(type=discord.ActivityType.competing, name="as melhores promoções | /comparar"),
+            discord.Activity(type=discord.ActivityType.listening, name="jogos grátis na Steam | /canal_gratis"),
+            discord.Activity(type=discord.ActivityType.watching, name="alertas em tempo real | /status"),
+        ]
+        chosen = activities[_PRESENCE_INDEX % len(activities)]
+        _PRESENCE_INDEX += 1
+        await bot.change_presence(status=discord.Status.online, activity=chosen)
+        logger.debug("Heartbeat de presença executado: %s", chosen.name)
+    except Exception as exc:
+        logger.warning("Falha temporária no heartbeat de presença: %s", exc)
+
+
+@heartbeat_presence_worker.before_loop
+async def before_heartbeat_presence_worker():
+    await bot.wait_until_ready()
+
+
+@heartbeat_presence_worker.error
+async def heartbeat_presence_worker_error(error: Exception):
+    logger.warning("Erro no heartbeat_presence_worker: %s", error)
+
+
+
 # ==============================================================================
 # EVENTOS DO BOT
 # ==============================================================================
@@ -1497,6 +1529,10 @@ async def on_ready():
         check_free_games_feed.start()
         logger.info("Worker de alertas de jogos grátis Steam (1h) iniciado.")
 
+    if not heartbeat_presence_worker.is_running():
+        heartbeat_presence_worker.start()
+        logger.info("Worker de Heartbeat de Presença (10m) iniciado.")
+
     if BACKUP_CHANNEL_ID and BACKUP_CHANNEL_ID.strip():
         if not database_backup_worker.is_running():
             database_backup_worker.start()
@@ -1504,7 +1540,7 @@ async def on_ready():
 
     activity = discord.Activity(
         type=discord.ActivityType.watching,
-        name="preços globais | /comparar | /status",
+        name="preços na Steam & eShop | /steam",
     )
     await bot.change_presence(status=discord.Status.online, activity=activity)
     logger.info("PriceTracker v1.1 pronto para operação!")

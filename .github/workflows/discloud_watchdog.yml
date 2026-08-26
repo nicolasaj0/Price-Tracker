@@ -1,0 +1,35 @@
+﻿name: Discloud 24/7 Watchdog
+
+on:
+  schedule:
+    # Executa a cada 2 horas (no minuto 15 para evitar picos)
+    - cron: '15 */2 * * *'
+  workflow_dispatch: # Permite disparo manual via botão no GitHub
+
+jobs:
+  check-and-wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🔍 Verificar Status do Bot na Discloud
+        run: |
+          if [ -z "${{ secrets.DISCLOUD_TOKEN }}" ]; then
+            echo "⚠️ AVISO: DISCLOUD_TOKEN ainda não configurado em Repository Settings -> Secrets and variables -> Actions."
+            exit 0
+          fi
+
+          APP_ID="1787671554864"
+          echo "Consultando status do app $APP_ID na Discloud API..."
+          
+          STATUS_RESPONSE=$(curl -s -X GET "https://api.discloud.app/v2/app/$APP_ID/status" \
+            -H "api-token: ${{ secrets.DISCLOUD_TOKEN }}")
+          
+          echo "Resposta da API: $STATUS_RESPONSE"
+          
+          if echo "$STATUS_RESPONSE" | grep -iq '"container":"Offline"'; then
+            echo "🚨 Container detectado como Offline! Disparando inicialização imediata..."
+            START_RESPONSE=$(curl -s -X PUT "https://api.discloud.app/v2/app/$APP_ID/start" \
+              -H "api-token: ${{ secrets.DISCLOUD_TOKEN }}")
+            echo "Resultado da inicialização: $START_RESPONSE"
+          else
+            echo "🟢 Bot operacional e Online!"
+          fi
