@@ -643,3 +643,18 @@ async def record_posted_giveaway(giveaway_id: str, guild_id: int, db_path: str =
         )
         await db.commit()
         return True
+
+
+async def perform_database_maintenance(db_path: str = DB_PATH) -> bool:
+    """Executa manutenção preventiva no SQLite: WAL checkpoint e otimização de índices."""
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("PRAGMA busy_timeout = 5000;")
+            await db.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            await db.execute("PRAGMA optimize;")
+            await db.commit()
+        return True
+    except Exception as exc:
+        logger.warning("Falha na manutenção periódica do SQLite: %s", exc)
+        return False
+

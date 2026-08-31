@@ -1307,6 +1307,7 @@ async def price_checker_worker():
                 await asyncio.sleep(1.5)
 
         logger.info("Ciclo periódico concluído com sucesso.")
+        await db.perform_database_maintenance(db.DB_PATH)
 
     except Exception as exc:
         logger.error("Exceção geral no worker periódico: %s", exc, exc_info=True)

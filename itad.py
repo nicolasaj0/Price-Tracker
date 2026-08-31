@@ -61,9 +61,11 @@ async def get_http_client() -> httpx.AsyncClient:
     """Obtém ou inicializa a sessão HTTP compartilhada para o ITAD."""
     global _global_itad_client
     if _global_itad_client is None or _global_itad_client.is_closed:
+        limits = httpx.Limits(max_keepalive_connections=5, max_connections=10, keepalive_expiry=30.0)
         _global_itad_client = httpx.AsyncClient(
             headers={"User-Agent": "PriceTracker-DiscordBot/1.1"},
             timeout=3.0,
+            limits=limits,
         )
     return _global_itad_client
 

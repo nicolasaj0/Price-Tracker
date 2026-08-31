@@ -59,10 +59,11 @@ _steam_autocomplete_cache = InMemoryTTLCache(maxsize=256, ttl_seconds=600.0)
 
 
 async def get_http_client() -> httpx.AsyncClient:
-    """Obtém ou inicializa a sessão HTTP persistente compartilhada."""
+    """Obtém ou inicializa a sessão HTTP persistente compartilhada com pooling controlado."""
     global _global_client
     if _global_client is None or _global_client.is_closed:
-        _global_client = httpx.AsyncClient(headers=HEADERS, timeout=12.0)
+        limits = httpx.Limits(max_keepalive_connections=5, max_connections=10, keepalive_expiry=30.0)
+        _global_client = httpx.AsyncClient(headers=HEADERS, timeout=12.0, limits=limits)
     return _global_client
 
 
